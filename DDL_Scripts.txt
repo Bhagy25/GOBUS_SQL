@@ -1,0 +1,210 @@
+﻿-----GOBUS------
+-- ─────────────────────────────────────────────
+--  DROP ORDER
+-- ─────────────────────────────────────────────
+DROP TABLE IF EXISTS Passenger_Seat    CASCADE;
+DROP TABLE IF EXISTS Passenger_Ticket  CASCADE;
+DROP TABLE IF EXISTS Passenger         CASCADE;
+DROP TABLE IF EXISTS Ticket            CASCADE;
+DROP TABLE IF EXISTS Trip              CASCADE;
+DROP TABLE IF EXISTS Booking           CASCADE;
+DROP TABLE IF EXISTS Seat              CASCADE;
+DROP TABLE IF EXISTS Bus               CASCADE;
+DROP TABLE IF EXISTS Operator          CASCADE;
+DROP TABLE IF EXISTS Route_Station     CASCADE;
+DROP TABLE IF EXISTS Route             CASCADE;
+DROP TABLE IF EXISTS Station           CASCADE;
+DROP TABLE IF EXISTS "User"            CASCADE;
+-------
+CREATE SCHEMA gobus;
+SET search_path TO gobus;
+------ =============================================================
+--  1. STATION
+--     Stores physical bus stations / stops.
+-- =============================================================
+CREATE TABLE Station (
+Station_ID      SERIAL          PRIMARY KEY,
+Station_Name    VARCHAR(100)    NOT NULL,
+Address         VARCHAR(100)    NOT NULL,
+City            VARCHAR(100)    NOT NULL
+);
+
+-- =============================================================
+--  2. ROUTE
+--     A named route (e.g., "Ahmedabad → Jaipur").
+-- =============================================================
+CREATE TABLE Route (
+Route_ID        SERIAL          PRIMARY KEY,
+Route_Name      VARCHAR(100)
+);
+
+-- =============================================================
+--  3. ROUTE_STATION  (junction: Route M:N Station)
+--     Captures each stop along a route with its order and
+--     travel time from the source station.
+-- =============================================================
+CREATE TABLE Route_Station (
+Route_ID                INTEGER     NOT NULL
+REFERENCES Route(Route_ID)     ON DELETE CASCADE,
+Station_ID              INTEGER     NOT NULL
+REFERENCES Station(Station_ID) ON DELETE CASCADE,
+Stop_No                 INTEGER     NOT NULL,               -- 1 = source, max = destination
+Duration_From_Source    INTEGER     NOT NULL,               -- minutes from first station
+PRIMARY KEY (Route_ID, Station_ID)
+);
+
+-- =============================================================
+--  4. OPERATOR
+--     Bus transport companies registered on the platform.
+-- =============================================================
+CREATE TABLE Operator (
+Operator_ID     SERIAL          PRIMARY KEY,
+Operator_Name   VARCHAR(100)    NOT NULL,
+Address         VARCHAR(255)    NOT NULL,
+Email           VARCHAR(150)    NOT NULL UNIQUE,
+Contact_No      VARCHAR(15)     NOT NULL
+);
+
+-- =============================================================
+--  5. BUS
+--     Each bus belongs to one operator.
+-- =============================================================
+CREATE TABLE Bus (
+Bus_ID SERIAL PRIMARY KEY,
+Operator_ID INTEGER NOT NULL
+REFERENCES Operator(Operator_ID) ON DELETE CASCADE,
+Register_No VARCHAR(30) NOT NULL UNIQUE,
+Total_Seat INTEGER NOT NULL CHECK (Total_Seat > 0),
+Bus_Type VARCHAR(50) NOT NULL CHECK (Bus_Type IN (
+'AC Sleeper',
+'AC Seater',
+'Non-AC Sleeper',
+'Non-AC Seater'
+))
+);
+
+-- =============================================================
+--  6. SEAT
+--     Individual seats tied to a specific bus.
+--     Seat_ID is the PK; Bus_ID is a FK (from the .dia file
+--     Seat_ID column is marked PK, Bus_ID is a separate FK col).
+-- =============================================================
+CREATE TABLE Seat (
+Seat_ID SERIAL PRIMARY KEY,
+Bus_ID INTEGER NOT NULL
+REFERENCES Bus(Bus_ID) ON DELETE CASCADE,
+Seat_No INTEGER NOT NULL,
+Seat_Type VARCHAR(30) NOT NULL CHECK (
+Seat_Type IN (
+'Sleeper Upper',
+'Sleeper Lower',
+'Seater Window',
+'Seater Aisle'
+)
+),
+UNIQUE (Bus_ID, Seat_No)
+);
+
+-- =============================================================
+--  7. USER
+--     Registered users of the platform (passengers log in as users).
+--     Self-referential FK for the referral system.
+-- =============================================================
+CREATE TABLE "User" (
+User_ID         SERIAL          PRIMARY KEY,
+Referral_User_ID INTEGER                      -- the user who referred this user
+REFERENCES "User"(User_ID) ON DELETE SET NULL,
+User_Name       VARCHAR(100)    NOT NULL,
+Email           VARCHAR(150)    NOT NULL UNIQUE,
+Phone           VARCHAR(150)    NOT NULL UNIQUE
+);
+
+-- =============================================================
+--  8. BOOKING
+--     One booking per transaction made by a user.
+-- =============================================================
+CREATE TABLE Booking (
+Booking_ID      SERIAL          PRIMARY KEY,
+User_ID         INTEGER         NOT NULL
+REFERENCES "User"(User_ID) ON DELETE RESTRICT,
+Booking_Date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+Booking_Status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+CHECK (Booking_Status IN
+('PENDING','CONFIRMED','CANCELLED','COMPLETED')),
+Paid_Amount     DECIMAL(10,2)   NOT NULL CHECK (Paid_Amount >= 0),
+Payment_Status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+CHECK (Payment_Status IN ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'))
+);
+
+-- =============================================================
+--  9. TRIP
+--     A specific run of a bus on a route at a departure time.
+--     Composite PK: (Route_ID, Bus_ID, Departure_DateTime)
+--     as modelled in the relational diagram.
+-- =============================================================
+CREATE TABLE Trip (
+Route_ID                INTEGER     NOT NULL REFERENCES Route(Route_ID)   ON DELETE RESTRICT,
+Bus_ID                  INTEGER     NOT NULL REFERENCES Bus(Bus_ID)        ON DELETE RESTRICT,
+Departure_DateTime      TIMESTAMP   NOT NULL,
+Booking_ID              INTEGER     REFERENCES Booking(Booking_ID)         ON DELETE SET NULL,
+Journey_Status          VARCHAR(20)
+CHECK (Journey_Status IN ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED')),
+Driver_ID               INTEGER,    -- stored as plain id; extend with Driver table if needed
+Conductor_ID            INTEGER,    -- stored as plain id; extend with Conductor table if needed
+PRIMARY KEY (Route_ID, Bus_ID, Departure_DateTime)
+);
+
+-- =============================================================
+--  10. TICKET
+--      Generated after a booking is confirmed.
+--      PNR is the PK (unique identifier for a ticket).
+-- =============================================================
+CREATE TABLE Ticket (
+PNR             VARCHAR(20)     PRIMARY KEY,
+Booking_ID      INTEGER         NOT NULL
+REFERENCES Booking(Booking_ID) ON DELETE CASCADE,
+Total_Seat      INTEGER         NOT NULL CHECK (Total_Seat > 0)
+);
+
+-- =============================================================
+--  11. PASSENGER
+--      Individual travellers listed under a booking.
+--      A user may add multiple passengers (e.g., family members).
+-- =============================================================
+CREATE TABLE Passenger (
+Passenger_ID    SERIAL          PRIMARY KEY,
+Passenger_Type  VARCHAR(100)    NOT NULL
+CHECK (Passenger_Type IN ('Adult', 'Child', 'Senior')),
+Passenger_Name  VARCHAR(100)    NOT NULL,
+Email           VARCHAR(150)    NOT NULL UNIQUE,
+Gender          VARCHAR(10)     NOT NULL
+CHECK (Gender IN ('Male', 'Female', 'Other')),
+DOB             DATE            NOT NULL
+);
+
+-- =============================================================
+--  12. PASSENGER_TICKET  (junction: Passenger M:N Ticket)
+--      Links passengers to the tickets they are booked on.
+-- =============================================================
+CREATE TABLE Passenger_Ticket (
+Passenger_ID    INTEGER         NOT NULL
+REFERENCES Passenger(Passenger_ID) ON DELETE CASCADE,
+PNR             VARCHAR(20)     NOT NULL
+REFERENCES Ticket(PNR)             ON DELETE CASCADE,
+PRIMARY KEY (Passenger_ID, PNR)
+);
+
+-- =============================================================
+--  13. PASSENGER_SEAT  (junction: Passenger M:N Seat)
+--      Records which seat each passenger is assigned.
+-- =============================================================
+CREATE TABLE Passenger_Seat (
+Seat_ID         INTEGER         NOT NULL
+REFERENCES Seat(Seat_ID)           ON DELETE RESTRICT,
+Passenger_ID    INTEGER         NOT NULL
+REFERENCES Passenger(Passenger_ID) ON DELETE CASCADE,
+PRIMARY KEY (Seat_ID, Passenger_ID)
+);
+-- =============================================================
+--  END OF DDL
+-- =============================================================

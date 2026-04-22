@@ -1,0 +1,680 @@
+GoBus - QUERIES
+Course: IT214-Database management system
+Semester: Winter 2026
+Date: 18th April
+
+Project Team
+Name              Roll Number
+Bhagy Sheth       202401200
+Om Shiloja        202401201
+Dhruv Sodvadiya   202401207
+Parth Sorathiya   202401215
+Vikas Rathod      202401179
+
+========================================
+ GOBUS SQL QUERIES
+========================================
+
+> Booking & Payment
+----------------------------------------
+
+-- All confirmed bookings with user name and amount
+SELECT b.Booking_ID,
+    u.User_Name,
+    u.Phone,
+    b.Booking_Date,
+    b.Paid_Amount,
+    b.Booking_Status
+FROM gobus.Booking b
+JOIN gobus."User" u ON u.User_ID = b.User_ID
+WHERE b.Booking_Status = 'CONFIRMED'
+    AND b.Payment_Status = 'SUCCESS'
+ORDER BY b.Booking_Date DESC;
+
+-- Find all bookings placed in the first week of April 2026
+SELECT b.Booking_ID,
+    u.User_Name,
+    b.Booking_Date,
+    b.Paid_Amount,
+    b.Payment_Status
+FROM gobus.Booking b
+JOIN gobus."User" u ON u.User_ID = b.User_ID
+WHERE b.Booking_Date BETWEEN '2026-04-01' AND '2026-04-08 23:59:59'
+ORDER BY b.Booking_Date;
+
+-- List cancelled bookings and their refund outcome
+SELECT b.Booking_ID,
+    u.User_Name,
+    u.Phone,
+    b.Booking_Date,
+    b.Paid_Amount,
+    b.Payment_Status
+FROM gobus.Booking b
+JOIN gobus."User" u ON u.User_ID = b.User_ID
+WHERE b.Booking_Status = 'CANCELLED'
+ORDER BY b.Paid_Amount DESC;
+
+-- Total revenue and booking count per user
+SELECT u.User_Name,
+    u.Email,
+    COUNT(b.Booking_ID) AS Total_Bookings,
+    SUM(b.Paid_Amount) AS Total_Spent
+FROM gobus."User" u
+JOIN gobus.Booking b ON b.User_ID = b.User_ID
+    AND b.Payment_Status = 'SUCCESS'
+JOIN gobus.Booking bk ON bk.User_ID = u.User_ID
+    AND bk.Payment_Status = 'SUCCESS'
+GROUP BY u.User_ID, u.User_Name, u.Email
+ORDER BY Total_Spent DESC;
+
+-- Count bookings for each status (dashboard overview)
+SELECT b.Booking_Status,
+    b.Payment_Status,
+    COUNT(*) AS Total_Count,
+    SUM(b.Paid_Amount) AS Total_Amount
+FROM gobus.Booking b
+GROUP BY b.Booking_Status, b.Payment_Status
+ORDER BY Total_Count DESC;
+
+-- Break down platform revenue day by day
+SELECT DATE(b.Booking_Date) AS Booking_Day,
+    COUNT(b.Booking_ID) AS Num_Bookings,
+    SUM(b.Paid_Amount) AS Daily_Revenue
+FROM gobus.Booking b
+WHERE b.Payment_Status = 'SUCCESS'
+GROUP BY DATE(b.Booking_Date)
+ORDER BY Booking_Day;
+
+-- Users with repeat business (loyal/frequent travellers)
+SELECT u.User_Name,
+    u.Email,
+    COUNT(b.Booking_ID) AS Booking_Count,
+    SUM(b.Paid_Amount) AS Total_Spent
+FROM gobus."User" u
+JOIN gobus.Booking b ON b.User_ID = u.User_ID
+GROUP BY u.User_ID, u.User_Name, u.Email
+HAVING COUNT(b.Booking_ID) > 1
+ORDER BY Booking_Count DESC;
+
+-- Confirmed bookings that have no ticket issued
+SELECT b.Booking_ID,
+    u.User_Name,
+    b.Booking_Date,
+    b.Paid_Amount
+FROM gobus.Booking b
+JOIN gobus."User" u ON u.User_ID = b.User_ID
+WHERE b.Booking_Status IN ('CONFIRMED', 'COMPLETED')
+    AND b.Booking_ID NOT IN (
+        SELECT tk.Booking_ID
+        FROM gobus.Ticket tk
+    )
+ORDER BY b.Booking_Date;
+
+-- Highest spending user and all their bookings
+SELECT u.User_Name,
+    b.Booking_ID,
+    b.Booking_Date,
+    b.Paid_Amount,
+    b.Booking_Status,
+    r.Route_Name
+FROM gobus.Booking b
+JOIN gobus."User" u ON u.User_ID = b.User_ID
+JOIN gobus.Trip t ON t.Booking_ID = b.Booking_ID
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+WHERE b.User_ID = (
+    SELECT User_ID
+    FROM gobus.Booking
+    WHERE Payment_Status = 'SUCCESS'
+    GROUP BY User_ID
+    ORDER BY SUM(Paid_Amount) DESC
+    LIMIT 1
+)
+ORDER BY b.Booking_Date;
+
+-- Total revenue per route
+SELECT r.Route_Name,
+    COUNT(b.Booking_ID) AS Total_Bookings,
+    SUM(b.Paid_Amount) AS Route_Revenue
+FROM gobus.Booking b
+JOIN gobus.Trip t ON t.Booking_ID = b.Booking_ID
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+WHERE b.Payment_Status = 'SUCCESS'
+GROUP BY r.Route_ID, r.Route_Name
+ORDER BY Route_Revenue DESC;
+
+
+========================================
+> Trip & Route
+========================================
+
+-- All trips today with route and bus details
+SELECT t.Departure_DateTime,
+    r.Route_Name,
+    b.Register_No,
+    b.Bus_Type,
+    t.Journey_Status
+FROM gobus.Trip t
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+JOIN gobus.Bus b ON b.Bus_ID = t.Bus_ID
+WHERE DATE(t.Departure_DateTime) = '2026-04-10'
+ORDER BY t.Departure_DateTime;
+
+-- All stops for a route in order
+SELECT rs.Stop_No,
+    s.Station_Name,
+    s.City,
+    rs.Duration_From_Source AS Mins_From_Start
+FROM gobus.Route_Station rs
+JOIN gobus.Station s ON s.Station_ID = rs.Station_ID
+WHERE rs.Route_ID = 1
+ORDER BY rs.Stop_No;
+
+-- Which buses are currently running and which operator operates them?
+SELECT t.Departure_DateTime,
+    r.Route_Name,
+    b.Register_No,
+    o.Operator_Name,
+    o.Contact_No,
+    t.Driver_ID,
+    t.Conductor_ID
+FROM gobus.Trip t
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+JOIN gobus.Bus b ON b.Bus_ID = t.Bus_ID
+JOIN gobus.Operator o ON o.Operator_ID = b.Operator_ID
+WHERE t.Journey_Status = 'IN_PROGRESS';
+
+-- Rank routes by how many trips have been run on them
+SELECT r.Route_Name,
+    COUNT(t.Bus_ID) AS Total_Trips,
+    SUM(CASE WHEN t.Journey_Status='COMPLETED' THEN 1 ELSE 0 END) AS Completed_Trips,
+    SUM(CASE WHEN t.Journey_Status='CANCELLED' THEN 1 ELSE 0 END) AS Cancelled_Trips
+FROM gobus.Route r
+LEFT JOIN gobus.Trip t ON t.Route_ID = r.Route_ID
+GROUP BY r.Route_ID, r.Route_Name
+ORDER BY Total_Trips DESC;
+
+-- Compute time between non-adjacent stops on the same route
+SELECT r.Route_Name,
+    s1.Station_Name AS From_Station,
+    s2.Station_Name AS To_Station,
+    rs2.Duration_From_Source - rs1.Duration_From_Source AS Travel_Mins
+FROM gobus.Route_Station rs1
+JOIN gobus.Route_Station rs2
+    ON rs2.Route_ID = rs1.Route_ID
+    AND rs2.Stop_No > rs1.Stop_No
+JOIN gobus.Route r ON r.Route_ID = rs1.Route_ID
+JOIN gobus.Station s1 ON s1.Station_ID = rs1.Station_ID
+JOIN gobus.Station s2 ON s2.Station_ID = rs2.Station_ID
+ORDER BY r.Route_ID, rs1.Stop_No, rs2.Stop_No;
+
+-- Upcoming trips with available seat count
+SELECT r.Route_Name,
+    t.Departure_DateTime,
+    b.Register_No,
+    b.Total_Seat,
+    COUNT(ps.Seat_ID) AS Occupied_Seats,
+    b.Total_Seat - COUNT(ps.Seat_ID) AS Available_Seats
+FROM gobus.Trip t
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+JOIN gobus.Bus b ON b.Bus_ID = t.Bus_ID
+LEFT JOIN gobus.Seat s ON s.Bus_ID = b.Bus_ID
+LEFT JOIN gobus.Passenger_Seat ps ON ps.Seat_ID = s.Seat_ID
+WHERE t.Journey_Status = 'SCHEDULED'
+GROUP BY r.Route_Name, t.Departure_DateTime, b.Register_No, b.Bus_ID, b.Total_Seat
+ORDER BY t.Departure_DateTime;
+
+-- Trip where same driver and conductor paired more than once
+SELECT Driver_ID,
+    Conductor_ID,
+    COUNT(*) AS Times_Paired
+FROM gobus.Trip
+WHERE Driver_ID IS NOT NULL
+    AND Conductor_ID IS NOT NULL
+GROUP BY Driver_ID, Conductor_ID
+HAVING COUNT(*) > 1
+ORDER BY Times_Paired DESC;
+
+-- Operator operational health dashboard
+SELECT o.Operator_Name,
+    SUM(CASE WHEN t.Journey_Status='SCHEDULED' THEN 1 ELSE 0 END) AS Scheduled,
+    SUM(CASE WHEN t.Journey_Status='IN_PROGRESS' THEN 1 ELSE 0 END) AS In_Progress,
+    SUM(CASE WHEN t.Journey_Status='COMPLETED' THEN 1 ELSE 0 END) AS Completed,
+    SUM(CASE WHEN t.Journey_Status='CANCELLED' THEN 1 ELSE 0 END) AS Cancelled
+FROM gobus.Operator o
+JOIN gobus.Bus b ON b.Operator_ID = o.Operator_ID
+JOIN gobus.Trip t ON t.Bus_ID = b.Bus_ID
+GROUP BY o.Operator_ID, o.Operator_Name
+ORDER BY o.Operator_Name;
+
+-- All source and final destination pairs per route
+SELECT r.Route_Name,
+    s_src.Station_Name AS Source,
+    s_dst.Station_Name AS Destination,
+    rs_dst.Duration_From_Source AS Total_Travel_Mins
+FROM gobus.Route r
+JOIN gobus.Route_Station rs_src ON rs_src.Route_ID = r.Route_ID
+    AND rs_src.Stop_No = 1
+JOIN gobus.Station s_src ON s_src.Station_ID = rs_src.Station_ID
+JOIN gobus.Route_Station rs_dst ON rs_dst.Route_ID = r.Route_ID
+    AND rs_dst.Stop_No = (
+        SELECT MAX(rs2.Stop_No)
+        FROM gobus.Route_Station rs2
+        WHERE rs2.Route_ID = r.Route_ID
+    )
+JOIN gobus.Station s_dst ON s_dst.Station_ID = rs_dst.Station_ID
+ORDER BY r.Route_ID;
+
+
+========================================
+> Passenger & Ticket
+========================================
+
+-- PNR check
+SELECT p.Passenger_Name,
+    p.Passenger_Type,
+    p.Gender,
+    p.DOB,
+    s.Seat_No,
+    s.Seat_Type
+FROM gobus.Passenger_Ticket pt
+JOIN gobus.Passenger p ON p.Passenger_ID = pt.Passenger_ID
+LEFT JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+LEFT JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+WHERE pt.PNR = 'PNR100001';
+
+-- Show how many tickets were issued against each booking
+SELECT Booking_ID,
+    COUNT(PNR) AS Ticket_Count,
+    SUM(Total_Seat) AS Total_Seats_Booked
+FROM gobus.Ticket
+GROUP BY Booking_ID
+ORDER BY Booking_ID;
+
+-- Find the seat number and type assigned to a passenger
+SELECT p.Passenger_Name, s.Seat_No,
+    s.Seat_Type, b.Register_No
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+JOIN gobus.Bus b ON b.Bus_ID = s.Bus_ID
+WHERE p.Passenger_Name = 'Vikas Rathod';
+
+-- For each passenger, show their PNR, booking, route, and seat
+SELECT p.Passenger_Name, pt.PNR,
+    r.Route_Name,
+    s.Seat_No, s.Seat_Type,
+    b.Booking_Status
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Ticket pt ON pt.Passenger_ID = p.Passenger_ID
+JOIN gobus.Ticket tk ON tk.PNR = pt.PNR
+JOIN gobus.Booking b ON b.Booking_ID = tk.Booking_ID
+JOIN gobus.Trip tr ON tr.Booking_ID = b.Booking_ID
+JOIN gobus.Route r ON r.Route_ID = tr.Route_ID
+LEFT JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+LEFT JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+ORDER BY p.Passenger_Name;
+
+-- Seat type preferred by gender
+SELECT p.Gender,
+    s.Seat_Type,
+    COUNT(*) AS Count
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+GROUP BY p.Gender, s.Seat_Type
+ORDER BY p.Gender, Count DESC;
+
+-- Full journey detail per passenger
+SELECT p.Passenger_Name,
+    pt.PNR,
+    r.Route_Name,
+    t.Departure_DateTime,
+    t.Journey_Status,
+    b.Booking_Status
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Ticket pt ON pt.Passenger_ID = p.Passenger_ID
+JOIN gobus.Ticket tk ON tk.PNR = pt.PNR
+JOIN gobus.Booking b ON b.Booking_ID = tk.Booking_ID
+JOIN gobus.Trip t ON t.Booking_ID = b.Booking_ID
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+ORDER BY p.Passenger_Name, t.Departure_DateTime;
+
+-- Senior passengers travelling in an AC bus
+SELECT p.Passenger_Name,
+    p.DOB,
+    s.Seat_Type,
+    b.Bus_Type,
+    o.Operator_Name
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+JOIN gobus.Bus b ON b.Bus_ID = s.Bus_ID
+JOIN gobus.Operator o ON o.Operator_ID = b.Operator_ID
+WHERE p.Passenger_Type = 'Senior'
+    AND b.Bus_Type LIKE 'AC%';
+
+-- Number of passengers per route
+SELECT r.Route_Name,
+    COUNT(DISTINCT pt.Passenger_ID) AS Passenger_Count,
+    COUNT(DISTINCT tk.PNR) AS Ticket_Count
+FROM gobus.Passenger_Ticket pt
+JOIN gobus.Ticket tk ON tk.PNR = pt.PNR
+JOIN gobus.Booking bk ON bk.Booking_ID = tk.Booking_ID
+JOIN gobus.Trip t ON t.Booking_ID = bk.Booking_ID
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+GROUP BY r.Route_ID, r.Route_Name
+ORDER BY Passenger_Count DESC;
+
+-- Which passenger type prefers which seat types
+SELECT p.Passenger_Type,
+    s.Seat_Type,
+    COUNT(*) AS Count
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+GROUP BY p.Passenger_Type, s.Seat_Type
+ORDER BY p.Passenger_Type, Count DESC;
+
+-- Children and seniors on AC vs Non-AC buses
+SELECT b.Bus_Type,
+    p.Passenger_Type,
+    COUNT(p.Passenger_ID) AS Count
+FROM gobus.Passenger p
+JOIN gobus.Passenger_Seat ps ON ps.Passenger_ID = p.Passenger_ID
+JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+JOIN gobus.Bus b ON b.Bus_ID = s.Bus_ID
+GROUP BY b.Bus_Type, p.Passenger_Type
+ORDER BY b.Bus_Type, Count DESC;
+
+
+========================================
+> User & Referral
+========================================
+
+-- Users who joined without any referrals
+SELECT User_ID,
+    User_Name,
+    Email,
+    Phone
+FROM gobus."User"
+WHERE Referral_User_ID IS NULL
+ORDER BY User_Name;
+
+-- All referred users with their referrer's name
+SELECT u.User_Name AS User_Name,
+    u.Email AS User_Email,
+    r.User_Name AS Referred_By,
+    r.Phone AS Referrer_Phone
+FROM gobus."User" u
+JOIN gobus."User" r ON r.User_ID = u.Referral_User_ID
+WHERE u.Referral_User_ID IS NOT NULL
+ORDER BY r.User_Name;
+
+-- Top 5 users by total amount spent
+SELECT u.User_Name,
+    u.Email,
+    u.Phone,
+    COUNT(b.Booking_ID) AS Total_Bookings,
+    SUM(b.Paid_Amount) AS Total_Spent
+FROM gobus."User" u
+JOIN gobus.Booking b ON b.User_ID = u.User_ID
+WHERE b.Payment_Status = 'SUCCESS'
+GROUP BY u.User_ID, u.User_Name, u.Email, u.Phone
+ORDER BY Total_Spent DESC
+LIMIT 5;
+
+-- Users with more than 2 successful bookings
+SELECT u.User_Name,
+    u.Email,
+    COUNT(b.Booking_ID) AS Successful_Bookings,
+    SUM(b.Paid_Amount) AS Total_Spent
+FROM gobus."User" u
+JOIN gobus.Booking b ON b.User_ID = u.User_ID
+    AND b.Payment_Status = 'SUCCESS'
+GROUP BY u.User_ID, u.User_Name, u.Email
+HAVING COUNT(b.Booking_ID) >= 2
+ORDER BY Successful_Bookings DESC;
+
+-- Most booked route per user
+SELECT u.User_Name,
+    r.Route_Name,
+    COUNT(b.Booking_ID) AS Times_Booked
+FROM gobus."User" u
+JOIN gobus.Booking b ON b.User_ID = u.User_ID
+JOIN gobus.Trip t ON t.Booking_ID = b.Booking_ID
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+WHERE b.Payment_Status = 'SUCCESS'
+GROUP BY u.User_ID, u.User_Name, r.Route_ID, r.Route_Name
+ORDER BY u.User_Name, Times_Booked DESC;
+
+----Lists all users who referred at least one other user, along with how many people they referred — identifies top referrers.
+SELECT r.User_ID,
+    r.User_Name,
+    r.Email,
+    COUNT(u.User_ID) AS Referred_Users
+FROM gobus."User" r
+JOIN gobus."User" u ON u.Referral_User_ID = r.User_ID
+GROUP BY r.User_ID, r.User_Name, r.Email
+ORDER BY Referred_Users DESC;
+
+
+========================================
+> Operator & Bus
+========================================
+
+-- Which operator serves which route
+SELECT DISTINCT o.Operator_Name,
+    r.Route_Name
+FROM gobus.Operator o
+JOIN gobus.Bus b ON b.Operator_ID = o.Operator_ID
+JOIN gobus.Trip t ON t.Bus_ID = b.Bus_ID
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+ORDER BY o.Operator_Name, r.Route_Name;
+
+-- Average booking fare per bus type
+SELECT b.Bus_Type,
+    COUNT(bk.Booking_ID) AS Num_Bookings,
+    ROUND(AVG(bk.Paid_Amount), 2) AS Avg_Fare,
+    MIN(bk.Paid_Amount) AS Min_Fare,
+    MAX(bk.Paid_Amount) AS Max_Fare
+FROM gobus.Bus b
+JOIN gobus.Trip t ON t.Bus_ID = b.Bus_ID
+JOIN gobus.Booking bk ON bk.Booking_ID = t.Booking_ID
+WHERE bk.Payment_Status = 'SUCCESS'
+GROUP BY b.Bus_Type
+ORDER BY Avg_Fare DESC;
+
+-- Revenue generated per operator
+SELECT o.Operator_Name,
+    COUNT(DISTINCT t.Bus_ID) AS Buses_Used,
+    COUNT(DISTINCT bk.Booking_ID) AS Bookings,
+    SUM(bk.Paid_Amount) AS Revenue
+FROM gobus.Trip t
+JOIN gobus.Bus b ON b.Bus_ID = t.Bus_ID
+JOIN gobus.Operator o ON o.Operator_ID = b.Operator_ID
+JOIN gobus.Booking bk ON bk.Booking_ID = t.Booking_ID
+WHERE bk.Payment_Status = 'SUCCESS'
+GROUP BY o.Operator_ID, o.Operator_Name
+ORDER BY Revenue DESC;
+
+--Shows how many distinct routes each operator covers and how many buses they deployed — measures operator network diversity.
+SELECT o.Operator_Name,
+    COUNT(DISTINCT r.Route_ID)  AS Routes_Covered,
+    COUNT(DISTINCT b.Bus_ID)    AS Total_Buses,
+    COUNT(DISTINCT t.Bus_ID)    AS Buses_Ever_Deployed
+FROM gobus.Operator o
+JOIN gobus.Bus b  ON b.Operator_ID = o.Operator_ID
+LEFT JOIN gobus.Trip t ON t.Bus_ID = b.Bus_ID
+LEFT JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+GROUP BY o.Operator_ID, o.Operator_Name
+ORDER BY Routes_Covered DESC;
+
+--For each operator, finds the most recent trip date — helps identify operators who haven't run any trips recently.
+SELECT o.Operator_Name,
+    COUNT(DISTINCT b.Bus_ID)        AS Fleet_Size,
+    MAX(t.Departure_DateTime)       AS Last_Trip_Date,
+    MIN(t.Departure_DateTime)       AS First_Trip_Date
+FROM gobus.Operator o
+JOIN gobus.Bus b  ON b.Operator_ID = o.Operator_ID
+LEFT JOIN gobus.Trip t ON t.Bus_ID = b.Bus_ID
+GROUP BY o.Operator_ID, o.Operator_Name
+ORDER BY Last_Trip_Date DESC;
+
+
+========================================
+> Station & City
+========================================
+
+-- Full station directory sorted by city
+SELECT Station_ID,
+    Station_Name,
+    Address,
+    City
+FROM gobus.Station
+ORDER BY City, Station_Name;
+
+-- How many routes include each station
+SELECT s.Station_Name,
+    s.City,
+    COUNT(DISTINCT rs.Route_ID) AS Routes_Count
+FROM gobus.Station s
+JOIN gobus.Route_Station rs ON rs.Station_ID = s.Station_ID
+GROUP BY s.Station_ID, s.Station_Name, s.City
+ORDER BY Routes_Count DESC;
+
+For each city, counts how many distinct stations exist and how many total route-stops pass through that city
+SELECT s.City,
+    COUNT(DISTINCT s.Station_ID) AS Total_Stations,
+    COUNT(rs.Stop_No)            AS Total_Stop_Appearances
+FROM gobus.Station s
+LEFT JOIN gobus.Route_Station rs ON rs.Station_ID = s.Station_ID
+GROUP BY s.City
+ORDER BY Total_Stop_Appearances DESC;
+
+-- What it does: Measures how well-connected each station is — counts how many other stations are reachable from it via any forward stop on any route.
+SELECT s.Station_Name,
+    s.City,
+    COUNT(DISTINCT rs2.Station_ID)  AS Reachable_Stations,
+    COUNT(DISTINCT rs1.Route_ID)    AS Via_Routes
+FROM gobus.Station s
+JOIN gobus.Route_Station rs1 ON rs1.Station_ID = s.Station_ID
+JOIN gobus.Route_Station rs2
+    ON  rs2.Route_ID = rs1.Route_ID
+    AND rs2.Stop_No  > rs1.Stop_No
+GROUP BY s.Station_ID, s.Station_Name, s.City
+ORDER BY Reachable_Stations DESC;
+
+========================================
+> Seat & Fleet Inventory
+========================================
+
+-- Count of Window, Aisle, Lower, and Upper seats platform-wide
+SELECT Seat_Type,
+    COUNT(*) AS Total_Seats
+FROM gobus.Seat
+GROUP BY Seat_Type
+ORDER BY Total_Seats DESC;
+
+-- Passenger name and their seat details with operator
+SELECT p.Passenger_Name,
+    p.Passenger_Type,
+    s.Seat_No,
+    s.Seat_Type,
+    b.Register_No,
+    b.Bus_Type,
+    o.Operator_Name
+FROM gobus.Passenger_Seat ps
+JOIN gobus.Passenger p ON p.Passenger_ID = ps.Passenger_ID
+JOIN gobus.Seat s ON s.Seat_ID = ps.Seat_ID
+JOIN gobus.Bus b ON b.Bus_ID = s.Bus_ID
+JOIN gobus.Operator o ON o.Operator_ID = b.Operator_ID
+ORDER BY o.Operator_Name, b.Register_No, s.Seat_No;
+
+-- What it does: Shows the occupancy percentage of each bus — how many of its seats are currently assigned to passengers vs total capacity.
+SELECT b.Register_No,
+    b.Bus_Type,
+    o.Operator_Name,
+    b.Total_Seat,
+    COUNT(ps.Seat_ID)                               AS Occupied_Seats,
+    b.Total_Seat - COUNT(ps.Seat_ID)                AS Free_Seats,
+    ROUND(COUNT(ps.Seat_ID) * 100.0
+          / NULLIF(b.Total_Seat, 0), 1)             AS Occupancy_Pct
+FROM gobus.Bus b
+JOIN gobus.Operator o ON o.Operator_ID = b.Operator_ID
+LEFT JOIN gobus.Seat s  ON s.Bus_ID = b.Bus_ID
+LEFT JOIN gobus.Passenger_Seat ps ON ps.Seat_ID = s.Seat_ID
+GROUP BY b.Bus_ID, b.Register_No, b.Bus_Type, b.Total_Seat, o.Operator_Name
+ORDER BY Occupancy_Pct DESC;
+
+
+========================================
+> Journey Status and Operations
+========================================
+
+-- All trips scheduled to depart on a specific date
+SELECT t.Departure_DateTime,
+    r.Route_Name,
+    b.Register_No,
+    b.Bus_Type,
+    t.Journey_Status
+FROM gobus.Trip t
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+JOIN gobus.Bus b ON b.Bus_ID = t.Bus_ID
+WHERE DATE(t.Departure_DateTime) = '2026-04-11'
+ORDER BY t.Departure_DateTime;
+
+-- Revenue collected from only completed trips
+SELECT r.Route_Name,
+    COUNT(DISTINCT t.Bus_ID) AS Completed_Trips,
+    SUM(bk.Paid_Amount) AS Revenue_From_Completed
+FROM gobus.Trip t
+JOIN gobus.Route r ON r.Route_ID = t.Route_ID
+JOIN gobus.Booking bk ON bk.Booking_ID = t.Booking_ID
+WHERE t.Journey_Status = 'COMPLETED'
+    AND bk.Payment_Status = 'SUCCESS'
+GROUP BY r.Route_ID, r.Route_Name
+ORDER BY Revenue_From_Completed DESC;
+
+-- Find all stations that are intermediate stops
+SELECT DISTINCT s.Station_ID, s.Station_Name
+FROM gobus.Station s
+JOIN gobus.Route_Station rs ON s.Station_ID = rs.Station_ID
+WHERE rs.Stop_No != 1
+    AND rs.Stop_No != (
+        SELECT MAX(rs2.Stop_No)
+        FROM gobus.Route_Station rs2
+        WHERE rs2.Route_ID = rs.Route_ID
+    );
+
+-- For each city, count routes originating vs terminating
+SELECT
+    s.City,
+    COUNT(DISTINCT CASE WHEN rs.Stop_No = 1
+        THEN rs.Route_ID END) AS Routes_Departing,
+    COUNT(DISTINCT CASE WHEN rs.Stop_No = (
+        SELECT MAX(rs2.Stop_No)
+        FROM gobus.Route_Station rs2
+        WHERE rs2.Route_ID = rs.Route_ID
+        ) THEN rs.Route_ID END) AS Routes_Arriving,
+    COUNT(DISTINCT rs.Route_ID) AS Total_Routes_Passing
+FROM gobus.Station s
+JOIN gobus.Route_Station rs ON rs.Station_ID = s.Station_ID
+GROUP BY s.City
+ORDER BY Total_Routes_Passing DESC;
+
+-- Find station pairs connected by more than one route (parallel routes)
+SELECT
+    s1.Station_Name AS Station_A,
+    s2.Station_Name AS Station_B,
+    COUNT(DISTINCT rs1.Route_ID) AS Shared_Routes,
+    STRING_AGG(r.Route_Name, ', ') AS Route_Names
+FROM gobus.Route_Station rs1
+JOIN gobus.Route_Station rs2
+    ON rs2.Route_ID = rs1.Route_ID
+    AND rs2.Station_ID > rs1.Station_ID
+JOIN gobus.Station s1 ON s1.Station_ID = rs1.Station_ID
+JOIN gobus.Station s2 ON s2.Station_ID = rs2.Station_ID
+JOIN gobus.Route r ON r.Route_ID = rs1.Route_ID
+GROUP BY s1.Station_ID, s1.Station_Name, s2.Station_ID, s2.Station_Name
+HAVING COUNT(DISTINCT rs1.Route_ID) > 1;
+

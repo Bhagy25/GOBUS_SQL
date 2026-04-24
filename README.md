@@ -176,17 +176,6 @@ Each traveller on a booking is recorded as a passenger with their own profile �
 
 ---
 
-## 👥 Team
-
-**Project:** GoBus — Bus Ticket Booking & Management System  
-**Course:** Database Management Systems (DBMS)  
-**Institution:** <!-- Add your college name -->  
-
-| Name | Role |
-|---|---|
-| <!-- Name 1 --> | ER Diagram & Schema Design |
-| <!-- Name 2 --> | Relational Model & Normalization |
-| <!-- Name 3 --> | Documentation & Presentation |
 
 ---
 

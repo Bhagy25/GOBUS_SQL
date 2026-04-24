@@ -190,10 +190,4 @@ Each traveller on a booking is recorded as a passenger with their own profile �
 
 ---
 
-## 📄 License
-
-This project was developed for academic purposes as part of a DBMS course project.
-
----
-
 <p align="center">Made with ❤️ for DBMS | GoBus Project</p>
